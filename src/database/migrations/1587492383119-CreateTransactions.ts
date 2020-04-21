@@ -1,6 +1,11 @@
-import { MigrationInterface, QueryRunner, Table } from 'typeorm';
+import {
+  MigrationInterface,
+  QueryRunner,
+  Table,
+  TableForeignKey,
+} from 'typeorm';
 
-export default class CreateTransactions1586956188541
+export default class CreateTransactions1587492383119
   implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.createTable(
@@ -28,7 +33,7 @@ export default class CreateTransactions1586956188541
           },
           {
             name: 'category_id',
-            type: 'varchar',
+            type: 'uuid',
             isNullable: true,
           },
           {
