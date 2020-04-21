@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getCustomRepository, getRepository } from 'typeorm';
+import { getCustomRepository } from 'typeorm';
 
 import multer from 'multer';
 import multerConfig from '../config/upload';
@@ -7,8 +7,6 @@ import multerConfig from '../config/upload';
 import TransactionsRepository from '../repositories/TransactionsRepository';
 import CreateTransactionService from '../services/CreateTransactionService';
 
-import CreateCategoryService from '../services/CreateCategoryService';
-import Category from '../models/Category';
 import DeleteTransactionService from '../services/DeleteTransactionService';
 import ImportTransactionsService from '../services/ImportTransactionsService';
 
@@ -25,26 +23,12 @@ transactionsRouter.get('/', async (req, res) => {
 transactionsRouter.post('/', async (req, res) => {
   const { title, value, type, category } = req.body;
 
-  const categoriesRepository = getRepository(Category);
-  const categoryExists = await categoriesRepository.findOne({
-    where: { title: category },
-  });
-
-  let category_id = '';
-  if (categoryExists) {
-    category_id = categoryExists.id;
-  } else {
-    const createCategory = new CreateCategoryService();
-    const newCategory = await createCategory.execute({ title: category });
-    category_id = newCategory.id;
-  }
-
   const createTransaction = new CreateTransactionService();
   const transaction = await createTransaction.execute({
     title,
     value,
     type,
-    category_id,
+    category,
   });
 
   return res.json(transaction);

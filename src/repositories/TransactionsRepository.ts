@@ -19,11 +19,11 @@ class TransactionsRepository extends Repository<Transaction> {
     });
 
     const income = incomeTransactiosn.reduce(function calc(acc, value) {
-      return acc + value.value;
+      return acc + Number(value.value);
     }, 0);
 
     const outcome = outcomeTransactiosn.reduce(function calc(acc, value) {
-      return acc + value.value;
+      return acc + Number(value.value);
     }, 0);
 
     return {
