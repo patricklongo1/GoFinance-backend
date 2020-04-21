@@ -1,84 +1,92 @@
-import { getCustomRepository, getConnection, getRepository } from 'typeorm';
+import { getCustomRepository, getRepository, In } from 'typeorm';
 import csvParse from 'csv-parse';
 import fs from 'fs';
-import path from 'path';
-
-import multerConfig from '../config/upload';
 
 import Transaction from '../models/Transaction';
 import Category from '../models/Category';
 import TransactionsRepository from '../repositories/TransactionsRepository';
 
-interface Request {
-  fileName: string;
-}
-
 interface CSVTransaction {
   title: string;
-  value: number;
   type: 'income' | 'outcome';
+  value: number;
   category: string;
 }
 
 class ImportTransactionsService {
-  async execute({ fileName }: Request): Promise<Transaction[]> {
-    const parsers = csvParse({ delimiter: ', ', from_line: 2 });
-
-    const csvFilePath = path.join(multerConfig.directory, fileName);
-    const csvReadStream = fs.createReadStream(csvFilePath);
-
-    const parseCSV = csvReadStream.pipe(parsers);
-
+  async execute(filePath: string): Promise<Transaction[]> {
     const transactionsRepository = getCustomRepository(TransactionsRepository);
-    const categoryRepository = getRepository(Category);
+    const categoriesRepository = getRepository(Category);
 
-    const transactionsCSV: CSVTransaction[] = [];
+    const contactsReadStream = fs.createReadStream(filePath);
+
+    const parsers = csvParse({
+      from_line: 2,
+    });
+
+    const parseCSV = contactsReadStream.pipe(parsers);
+
+    const transactions: CSVTransaction[] = [];
+    const categories: string[] = [];
 
     parseCSV.on('data', async line => {
-      const [title, type, value, category] = line;
+      const [title, type, value, category] = line.map((cell: string) =>
+        cell.trim(),
+      );
 
-      transactionsCSV.push({ title, type, value, category });
+      if (!title || !type || !value) return;
+
+      categories.push(category);
+      transactions.push({
+        title,
+        type,
+        value,
+        category,
+      });
     });
 
     await new Promise(resolve => parseCSV.on('end', resolve));
 
-    const categories = transactionsCSV
-      .map(transection => transection.category)
-      .filter((elem, pos, self) => {
-        return self.indexOf(elem) === pos;
-      })
-      .map(category => categoryRepository.create({ title: category }));
+    const existentCategories = await categoriesRepository.find({
+      where: {
+        title: In(categories),
+      },
+    });
 
-    await getConnection()
-      .createQueryBuilder()
-      .insert()
-      .into(Category)
-      .values(categories)
-      .execute();
+    const existentCategoriesTitles = existentCategories.map(
+      (category: Category) => category.title,
+    );
 
-    const transactions = transactionsCSV.map(transaction => {
-      const category_id = categories.find(
-        category => category.title === transaction.category,
-      )?.id;
+    const addCategoriesTitles = categories
+      .filter(category => !existentCategoriesTitles.includes(category))
+      .filter((value, index, self) => self.indexOf(value) === index);
 
-      return transactionsRepository.create({
+    const newCategories = categoriesRepository.create(
+      addCategoriesTitles.map(title => ({
+        title,
+      })),
+    );
+
+    await categoriesRepository.save(newCategories);
+
+    const finalCategories = [...newCategories, ...existentCategories];
+
+    const createdTransactions = transactionsRepository.create(
+      transactions.map(transaction => ({
         title: transaction.title,
         type: transaction.type,
         value: transaction.value,
-        category_id,
-      });
-    });
+        category: finalCategories.find(
+          category => category.title === transaction.category,
+        ),
+      })),
+    );
 
-    await getConnection()
-      .createQueryBuilder()
-      .insert()
-      .into(Transaction)
-      .values(transactions)
-      .execute();
+    await transactionsRepository.save(createdTransactions);
 
-    await fs.promises.unlink(csvFilePath);
+    await fs.promises.unlink(filePath);
 
-    return transactions;
+    return createdTransactions;
   }
 }
 
